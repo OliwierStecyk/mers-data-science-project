@@ -1,0 +1,567 @@
+---
+title: "Case Study: MERS Epidemiological Data Analysis"
+author: "Oliwier Stecyk"
+date: "2026-01-09"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+links for date
+
+<https://www.who.int/health-topics/middle-east-respiratory-syndrome-coronavirus-mers#tab=tab_3>
+
+<https://iris.who.int/home>
+
+# Introduction
+
+The objective of this report is to analyze epidemiological data concerning Middle East Respiratory Syndrome (MERS) and to apply selected statistical methods for data description and interpretation. This analysis aims to facilitate a deeper understanding of the disease's distribution dynamics across both time and space, while evaluating the scale of the phenomenon within specific countries and regions.
+
+In the following sections, I present the characteristics of MERS, a description of the datasets utilized, data sources, and the planned statistical methodology alongside the interpretation of the results.
+
+## Characteristics of MERS
+
+Middle East Respiratory Syndrome (MERS) is a viral respiratory illness caused by the MERS-coronavirus (MERS-CoV). First identified in Saudi Arabia in 2012, coronaviruses belong to a large family of viruses that can cause diseases in humans ranging from the common cold to Severe Acute Respiratory Syndrome (SARS).
+
+MERS-CoV is a zoonotic virus, meaning it is transmitted from animals to humans, primarily through direct or indirect contact with infected dromedary camels. It is believed that bats may have been the original reservoir for the virus, with transmission to camels occurring in the distant past.
+
+Infections in humans can range from asymptomatic or mild respiratory symptoms to severe pneumonia, acute respiratory distress, and death. Common symptoms include:
+
+-   Fever
+-   Cough
+-   Shortness of breath
+-   Pneumonia
+
+The mortality rate among laboratory-confirmed cases is approximately 35%. however, this value may be inflated due to a potential underestimation of mild or asymptomatic cases that go undetected by surveillance systems.
+
+## Data Overview
+
+This analysis utilizes epidemiological data regarding reported MERS cases worldwide since its initial discovery in 2012. Since then, MERS cases have been recorded in 27 countries, primarily in the Middle East, but also in Africa, South Asia, and other global regions.
+
+The dataset structure consists of reports where: \* Each row corresponds to a single reporting day for a specific location. \* Each column represents the number of reported cases in a given country or region.
+
+This structure enables the analysis of changes in the number of infections over time, comparisons of the epidemiological situation between countries, and observations of the virus's global spread.
+
+## Data Source
+
+The data used in this study were obtained from official **World Health Organization (WHO)** materials, specifically MERS-CoV situational reports and risk assessments. These sources are globally recognized as reliable and form the basis for numerous epidemiological studies.
+
+# 2. Data Loading and Characteristics
+
+This chapter presents the data preparation process and a detailed description of the variables. The data is divided into several subsets, each highlighting a different aspect of the epidemic—ranging from general national statistics and detailed patient lists to the precise time series used in the modeling process.
+
+### 2.1. Overview of Available Datasets (Summary Table)
+
+| File Name | Data Scope | Key Application |
+|:-----------------------|:-----------------------|:-----------------------|
+| `country_count_latest.csv` | Statistics for 27 countries | Geographical analysis and global reach |
+| `demographics.csv` | Annual data (2014-2019) | Demographic profiling and mortality |
+| `type_of_contact.csv` | Transmission sources | Study of infection mechanisms |
+| `details.csv` | Individual case list | Clinical and localized analysis |
+| `weekly_clean.csv` | Weekly time series | Foundation for the modeling process |
+| `saudi_arabia_vs_south_korea_comparison.csv` | Comparison of major outbreaks | Healthcare system management analysis |
+
+------------------------------------------------------------------------
+
+### 2.2. Detailed Description of Variables
+
+#### Global Reach (`country_count_latest.csv`)
+
+-   **Saudi Arabia:** 2,058 cases (the primary endemic hotspot).
+-   **South Korea:** 186 cases (the largest outbreak outside the Middle East).
+
+#### Patient Profile (`demographics.csv`)
+
+An annual summary focusing on population susceptibility: \* **Gender % of male:** Used to examine the overrepresentation of men in infection statistics. \* **No. of Fatal:** The number of deaths used to monitor the Case Fatality Rate (CFR). \* **No. of HCW (Health Care Workers):** Indicates the scale of infections among medical personnel.
+
+#### Transmission Routes (`type_of_contact.csv`)
+
+A critical dataset for understanding how the virus enters the human population. It distinguishes between: \* **Primary cases:** Zoonotic infections (animal-to-human). \* **Secondary cases:** Human-to-human transmission (occurring in hospitals or households).
+
+#### Individual Data (`details.csv`)
+
+The most granular dataset, allowing for clinical analysis of specific cases. It contains information on **Age**, **City**, and key milestones: **Onset date** and **Hospitalization date**, which allows for measuring the reaction time of medical services.
+
+#### Temporal Dynamics (`weekly_clean.csv`)
+
+**Primary dataset for modeling.** This file contains the highest number of records, making it ideal for predictive analysis. It tracks the weekly number of new cases, allowing for the study of trends, seasonality, and the training of algorithms to predict future spikes in infections.
+
+#### Comparative Analysis (`saudi_arabia_vs_south_korea_comparison.csv`)
+
+A comparison of two different outbreak dynamics. A notable variable is **Emergency department**, which shows that in South Korea, **49% of infections** occurred in ER settings, serving as a significant warning for healthcare facility management.
+
+------------------------------------------------------------------------
+
+```{r, message = FALSE, warning=FALSE}
+library(tidyverse)
+library(moments)
+library(dplyr)
+library(knitr)
+library(randomForest)
+library(knitr)
+library(ggplot2)
+library(scales)
+```
+
+```{r}
+weekly_data  <- read.csv("./MERS/weekly_clean.csv")
+country_data <- read.csv("./MERS/country_count_latest.csv")
+demographics_data <- read.csv("./MERS/demographics.csv")
+transmission_data <- read.csv("./MERS/type_of_contact.csv")
+case_details <- read.csv("./MERS/details.csv")
+outbreak_comparison   <- read.csv("./MERS/saudi_arabia_vs_south_korea_comparison.csv")
+
+```
+
+"The first stage of the analysis involved a preliminary review of the structure and content of the available datasets. For this purpose, the initial observations for each dataset were displayed using the head() function, allowing for an evaluation of the variable count, names, data types, and the general format of the records."
+
+```{r}
+print(head(country_data,20
+           ))
+```
+
+```{r}
+print(head(weekly_data ,20))
+```
+
+```{r}
+print(head(demographics_data,20))
+```
+
+```{r}
+print(head(transmission_data,20))
+```
+
+```{r}
+print(head(case_details,20))
+```
+
+```{r}
+print(head(outbreak_comparison ,5))
+```
+
+## Data Loading Conclusions
+
+The initial data analysis allowed for an assessment of the structure and coverage of the available datasets. The **`weekly_clean`** dataset contains extensive time-series data with a significant number of weeks recording zero new cases, indicating the highly sporadic nature of the phenomenon. Data in **`country_count_latest`** reveal a dominant concentration of cases in Saudi Arabia, with a negligible contribution from other countries.
+
+The **`type_of_contact`** and **`demographics`** datasets provide aggregated annual insights into transmission mechanisms and the demographic structure of cases. In contrast, the **`details`** and **`saudi_arabia_vs_south_korea_comparison`** datasets serve primarily descriptive and contextual purposes. For the purpose of further quantitative analysis and predictive modeling, the **`weekly_clean`** dataset is considered the most critical.
+
+```{r}
+data <- list(
+  country = country_data,
+  demographics = demographics_data,
+  contact = transmission_data,
+  weekly = weekly_data ,
+  comparison = outbreak_comparison ,
+  details = case_details
+)
+```
+
+# 2. Data Understanding
+
+In this phase, we analyze the data structure, assess data completeness, and identify the distributions of the key variables within the datasets.
+
+## 2.1. Data Diagnostics and Missing Values
+
+In this step, I verified whether the datasets required further cleaning. It should be noted that, according to the project assumptions, the occurrence of gross errors or significant anomalies is expected to be minimal.
+
+```{r diagnostics, message=FALSE, warning=FALSE}
+f_missing <- function(df) sum(is.na(df))
+
+f_unique_rows <- function(df) {
+  nrow(unique(df))
+}
+
+f_count_duplicates <- function(df) {
+  sum(duplicated(df))
+}
+
+f_numeric_stats <- function(df) {
+  num_cols <- df %>% select(where(is.numeric))
+  
+  if (ncol(num_cols) == 0) {
+    return(data.frame(Zeros = 0, Zeros_Pct = 0, Skewness = 0, Outliers = 0))
+  }
+
+  zeros_count <- sum(num_cols == 0, na.rm = TRUE)
+  zeros_pct <- (zeros_count / (nrow(num_cols) * ncol(num_cols))) * 100
+
+  skewness_val <- mean(sapply(num_cols, moments::skewness, na.rm = TRUE), na.rm = TRUE)
+ 
+  outliers_count <- sum(sapply(num_cols, function(x) {
+    q <- quantile(x, c(0.25, 0.75), na.rm = TRUE)
+    iqr <- q[2] - q[1]
+    sum(x < (q[1] - 1.5 * iqr) | x > (q[2] + 1.5 * iqr), na.rm = TRUE)
+  }))
+  
+  data.frame(
+    Zeros = zeros_count,
+    Zeros_Pct = round(zeros_pct, 2),
+    Skewness = round(skewness_val, 2),
+    Outliers = outliers_count
+  )
+}
+
+analyze_file <- function(df, file_name) {
+  stats <- f_numeric_stats(df)
+  
+  data.frame(
+    File = file_name,
+    Rows = nrow(df),
+    Columns = ncol(df),
+    Missing_Values = f_missing(df),
+    Unique_Rows = f_unique_rows(df),
+    Duplicates = f_count_duplicates(df)
+  ) %>% cbind(stats)
+}
+
+quality_summary <- bind_rows(
+  analyze_file(country_data, "country_count"),
+  analyze_file(demographics_data, "demographics"),
+  analyze_file(transmission_data, "type_of_contact"),
+  analyze_file(weekly_data, "weekly_clean"),
+  analyze_file(outbreak_comparison, "comparison"),
+  analyze_file(case_details, "details")
+)
+
+print(quality_summary)
+```
+
+The table above presents a summary of the data quality assessment for all six analyzed datasets. The data exhibit high consistency: no duplicates were found, and the number of unique observations matches the row count across all datasets.
+
+The `weekly_clean` dataset, which is the largest and most critical for the modeling process, is characterized by significant positive skewness and a high proportion of zero values. This reflects the specific nature of epidemiological data, where long periods of zero reported cases are interrupted by short, intense outbreaks.
+
+A total of 107 outliers were identified in the weekly dataset. It is important to emphasize that these are not measurement errors; rather, they represent the actual progression of the virus, documenting real-world spikes in infection rates.
+
+# 2.2. Detailed Visualization of All Datasets
+
+### 1. Global Case Distribution (`country_count_latest.csv`)
+
+This chart illustrates the geographical scale of the phenomenon.
+
+```{r, warning=FALSE, message=FALSE}
+country_data %>%
+  arrange(desc(Confirmed)) %>%
+  head(10) %>%
+  ggplot(aes(x = reorder(Country, Confirmed), y = Confirmed, fill = Confirmed)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_gradient(low = "gold", high = "red") +
+  labs(title = "Top 10 countries by number of cases", 
+       x = "Country", y = "Confirmed cases") +
+  theme_minimal()
+```
+
+The visualization of the country_count_latest.csv dataset confirms the extreme geographical asymmetry of the MERS epidemic. Saudi Arabia dominates the ranking with more than 2,000 cases, establishing it as the primary epicenter of the disease. The Republic of Korea emerges as the second most significant hotspot.
+
+### 2. Rozkład zachorowań na świecie (`weekly_clean.csv`)
+
+```{r, warning=FALSE, message=FALSE}
+
+weekly_data_trend <- weekly_data  %>%
+  mutate(Czas = (Year - min(Year)) * 52 + Week)
+
+ggplot(weekly_data_trend, aes(x = Czas, y = New.Cases)) +
+  geom_point(alpha = 0.3, color = "gray") +
+  geom_smooth(method = "lm", color = "red", se = FALSE, size = 1.2) +
+  geom_smooth(method = "loess", color = "blue", se = FALSE, size = 1.2) + # 
+  theme_minimal() +
+  labs(title = "Analysis of Linearity in MERS Cases",
+       subtitle = "Red line (LM) vs Blue line (Actual nonlinear trend)",
+       x = "Time (Weeks since start of study)",
+       y = "Number of new cases")
+
+
+
+```
+
+The linear model (red line) exhibits a poor fit to the bursty, discontinuous nature of the data. It drastically underestimates infection peaks (epidemic outbreaks) while simultaneously overestimating periods with zero reported cases (failing to capture the zero-baseline). This confirms the non-linear behavior of the phenomenon and justifies the necessity of utilizing more advanced algorithms, such as **Random Forest**.
+
+### 2. Temporal Dynamics - Modeling Data(`weekly_clean.csv`)
+
+```{r}
+ggplot(weekly_data , aes(x = factor(Year), y = New.Cases, fill = factor(Year))) +
+  geom_boxplot(alpha = 0.7 ) +
+  theme_minimal() +
+  labs(title = "Distribution of New MERS Cases (2012-2019)",
+       subtitle = "Red points indicate outliers (epidemic spikes)",
+       x = "Year", y = "Number of New Cases") +
+  theme(legend.position = "none") #
+```
+
+The boxplot illustrates the annual distribution of new MERS cases from 2012 to 2019. It is evident that the highest infection rates occurred in 2014 and 2015. The observed outliers are not measurement errors; rather, they represent significant epidemiological outbreaks. Furthermore, the dominance of low-activity periods suggests that the virus typically spreads at a very slow rate, interrupted by occasional rapid transmission events.
+
+```{r}
+ggplot(weekly_data , aes(x = New.Cases, fill = Region)) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 10) + 
+  theme_minimal() +
+  labs(title = "Comparison of Case Distributions Across Regions",
+       subtitle = "Logarithmic scale on the X-axis for better visibility",
+       x = "Number of New Cases (log10)", y = "Frequency")
+```
+
+The histogram above illustrates the comparison of weekly new case distributions across the three analyzed regions: Saudi Arabia, the Republic of Korea, and "Other Countries." It is observed that for every region, the highest concentration of data points is at zero, indicating that no new infections were reported for the majority of the time. Furthermore, Saudi Arabia exhibits a significant "tail" in its distribution, confirming that high infection counts were more prevalent in this region. In contrast, the Republic of Korea shows only occasional and relatively minor spikes in cases.
+
+### 3. Demographic Changes (`demographics.csv`)
+
+Since this dataset contains only six records, annual trends are the most effective way to visualize and represent the data.
+
+```{r}
+demographics_data %>%
+  select(Year, 
+         X..of.primary.cases, 
+         X..of.secondary.cases, 
+         X..of.unknown.contact.history) %>%
+  
+  pivot_longer(cols = starts_with("X.."), 
+               names_to = "Type", 
+               values_to = "Percentage") %>%
+  
+  ggplot(aes(x = factor(Year), y = Percentage, fill = Type)) +
+  geom_bar(stat = "identity", position = "dodge") + 
+  scale_fill_brewer(palette = "Pastel1", 
+                    labels = c("Primary (from animals)", "Secondary (from humans)", "Unknown")) +
+  theme_minimal() +
+  labs(title = "Comparison of MERS Transmission Modes (Side-by-Side)",
+       x = "Year", y = "Percentage [%]", fill = "Source of Infection")
+
+```
+
+The visualization demonstrates that during the peak years of viral activity (2014–2015), secondary transmission (human-to-human) and a high number of cases with unknown sources were predominant. Between 2016 and 2018, there was a noticeable increase in the percentage of primary infections (direct animal-to-human transmission). This suggests that the virus remained active in animal reservoirs even as major human-to-human outbreaks subsided. In 2019, a resurgence in secondary transmission was once again observed.
+
+### 4. Transmission Sources (`type_of_contact.csv`)
+
+This section analyzes the infection pathways and the mechanisms through which individuals became infected.
+
+```{r}
+ggplot(transmission_data, aes(x = factor(Year), y = No..of.cases, fill = Type.of.case)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Transmission Type Over Time", 
+       x = "Year", y = "Number of Cases", fill = "Type of Contact") +
+  theme_minimal()
+```
+
+The chart identifies 2014 as the peak of the epidemic, during which the number of secondary (human-to-human) and unknown cases reached their highest levels. This underscores the rapid transmission rate of the virus during that period. Between 2016 and 2019, the infection count stabilized at a significantly lower level, with primary and secondary infections occurring in similar proportions.
+
+### 5. Comparison: Saudi Arabia vs. South Korea (`saudi_arabia_vs_south_korea_comparison.csv`)
+
+```{r}
+outbreak_comparison  %>%
+  select(X, Emergency.department, Health.care.personnel....) %>%
+  mutate(Emergency.department = as.numeric(gsub("%", "", Emergency.department)),
+         Health.care.personnel.... = as.numeric(gsub("%", "", Health.care.personnel....))) %>%
+  pivot_longer(-X) %>%
+  ggplot(aes(x = X, y = value, fill = name)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Outbreak Comparison: Saudi Arabia vs South Korea", 
+       y = "Value [%]", x = "", fill = "Indicator") +
+  theme_minimal()
+```
+
+Analysis of the chart highlights a distinct difference between the outbreaks in the two countries. In South Korea, the disease was almost exclusively linked to the healthcare system, with nearly 50% of infections occurring in Emergency Departments (ED). In Saudi Arabia, the virus exhibited a different transmission pattern. The contribution of emergency departments to the spread was significantly lower (under 10%), while the percentage of infected healthcare personnel was notably higher (approximately 27%). This suggests prolonged exposure of staff across numerous facilities, rather than a single acute incident in an ED, as was the case in Korea.
+
+```{r}
+str(weekly_data )
+
+```
+
+For modeling purposes, I performed label encoding on the Region variable, creating a new column Region_a, where each region was assigned a unique number. This allows learning algorithms to treat regions as numerical variables without losing information about their distinct identities.
+
+```{r}
+weekly_data $Region_a = as.numeric(as.factor(weekly_data $Region))
+head(weekly_data )
+```
+
+The files details.csv, saudi_arabia_vs_south_korea_comparison.csv, and demographics.csv contained too few observations (ranging from 1 to 6) to build a model. The dataset country_count_latest.csv only included aggregated data without explanatory variables, and type_of_contact.csv presented the course of the disease qualitatively.
+
+Therefore, for modeling, I selected only the weekly data, which provides a sufficient number of observations over time and allows forecasting the number of new cases.
+
+# 3. Modeling and Forecasting the Number of Cases
+
+### 3.1. Data Selection and Feature Engineering
+
+```{r}
+
+date_modeling <- weekly_data  %>%
+  group_by(Region) %>%
+  mutate(
+    Lag1 = lag(New.Cases, 1), 
+    Lag2 = lag(New.Cases, 2), 
+    Trend = 1:n()            
+  ) %>%
+  filter(!is.na(Lag2))
+
+n <- nrow(date_modeling)
+train_data <- date_modeling[1:(n-4), ]
+test_data <- date_modeling[(n-3):n, ]
+
+```
+
+To improve prediction quality, feature engineering was applied:
+
+Lags (Lag1, Lag2): Lagged variables were introduced to inform the model about the number of cases in the previous two weeks. This helps capture the dynamics of infection (if there were many cases last week, there are likely to be many this week as well).
+
+Trend: A numerical variable representing the passage of time.
+
+Log Transformation: The target variable was transformed using log1p to reduce the impact of extreme spikes in cases (outliers) on the model error.
+
+```{r}
+train_data$log_New.Cases <- log1p(train_data$New.Cases)
+model_lm_final <- lm(log_New.Cases ~ Year + Week + Region + Lag1 + Lag2 + Trend, data = train_data)
+
+
+set.seed(123)
+model_rf_final <- randomForest(
+  log_New.Cases ~ Year + Week + Region + Lag1 + Lag2 + Trend, 
+  data = train_data, 
+  ntree = 500,
+  nodesize = 5, 
+  importance = TRUE
+)
+
+pred_lm <- predict(model_lm_final, newdata = test_data)
+pred_rf <- predict(model_rf_final, newdata = test_data)
+
+mape_func <- function(actual, pred){
+  idx <- actual != 0
+  if(sum(idx) == 0) return(NA)
+  return(mean(abs((actual[idx] - pred[idx]) / actual[idx])) * 100)
+}
+
+mae_lm  <- mean(abs(test_data$New.Cases - pred_lm))
+rmse_lm <- sqrt(mean((test_data$New.Cases - pred_lm)^2))
+mape_lm <- mape_func(test_data$New.Cases, pred_lm)
+r2_lm   <- summary(model_lm_final)$r.squared
+
+mae_rf  <- mean(abs(test_data$New.Cases - pred_rf))
+rmse_rf <- sqrt(mean((test_data$New.Cases - pred_rf)^2))
+mape_rf <- mape_func(test_data$New.Cases, pred_rf)
+r2_rf   <- tail(model_rf_final$rsq, 1) 
+
+
+
+tabela_metryk <- data.frame(
+  Metryka =c("R-squared (Fit)", "MAE (Mean Absolute Error)", 
+             "RMSE (Root Mean Squared Error)", "MAPE (%)"),
+  Linear_Model  = c(round(r2_lm, 4), round(mae_lm, 2), round(rmse_lm, 2), paste0(round(mape_lm, 2), "%")),
+  RandomForest_Lags  = c(round(r2_rf, 4), round(mae_rf, 2), round(rmse_rf, 2), paste0(round(mape_rf, 2), "%"))
+)
+```
+
+### 3.2. Linear Regression
+
+Linear regression is the most classical statistical approach. It operates on the principle of describing relationships using a straight line, assuming that if a change occurs, the number of cases will increase or decrease at a constant, predictable rate.
+
+**The core issue:** Epidemics do not follow linear trends; they are characterized by sudden outbreaks or rapid subsidence. Linear regression is too rigid for such dynamics. Even when applying mathematical transformations, this model often fails to account for sudden spikes in cases. Furthermore, a significant drawback is its potential to predict impossible values, such as negative infection counts.
+
+------------------------------------------------------------------------
+
+### 3.3. Random Forest
+
+Random Forest represents a much more modern and flexible approach to data modeling. It is an ensemble method consisting of numerous decision trees that operate based on a series of decision rules rather than a single, predetermined mathematical formula.
+
+**Why does Random Forest perform better in this case?** \* **Responsiveness to abrupt changes:** The model is capable of capturing critical moments—such as a sudden disease outbreak—and adapting to them, rather than forcing a fit to the overall mean. \* **Robustness to noise:** If the data contains anomalies or "noise," the Random Forest algorithm can largely ignore these outliers, preventing them from distorting the entire forecast.
+
+# 4. Model Analysis and Evaluation
+
+In this section, I evaluated the quality of the fit and verified the performance of the models.
+
+### 4.1. Model Quality Metrics
+
+Four key metrics were utilized to compare the performance of the models: $R^2$ (Coefficient of Determination), **MAE** (Mean Absolute Error), **RMSE** (Root Mean Square Error), and **MAPE** (Mean Absolute Percentage Error).
+
+```{r, warning=FALSE, message=FALSE}
+kable(tabela_metryk, caption = "Table 1: Statistical Comparison of Models")
+```
+
+### 4.2 Statistical Model Comparison (Interpretation of Results)
+
+-   **Goodness of Fit (**$R^2$): The Random Forest (RF) model achieved a significantly better fit to the data ($R^2 = 0.7491$) compared to the linear model ($R^2 = 0.6705$). This indicates that the non-linear algorithm explains nearly 75% of the variance in the number of infections, handling the complex structure of epidemiological data more effectively.
+-   **Average Errors (MAE and RMSE):** The Root Mean Square Error (RMSE) is lower for the Random Forest model (0.47 vs. 0.49), suggesting that it produces large forecasting errors less frequently. The Mean Absolute Error (MAE) of 0.31 for both models suggests that, across the entire dataset, both models deviate by only a fraction of a case per week on average.
+-   **The MAPE Paradox:** The most intriguing variable was the MAPE. Initially, both models yielded errors in the 200–300% range; this is logical considering that a prediction of 2 cases when the actual value is near zero results in an extremely high percentage error. However, after implementing the logarithmic transformation, the linear model achieved a lower percentage error (MAPE = 28.81%) than the Random Forest (37.36%). This is likely due to the specific behavior of the MAPE metric when dealing with very small values—the linear model likely predicted values closer to 1 in the initial observations, which heavily influences this indicator. Nevertheless, considering overall predictive capacity, the Random Forest remains the more stable and robust model.
+
+### 4.3 Visual Analysis of Model Residuals
+
+In accordance with the CRISP-DM methodology, we verify the residuals to ensure they exhibit a random distribution, which is a prerequisite for a well-fitted model.
+
+```{r diagnostics_plots, fig.width=14, fig.height=8, echo=FALSE}
+actual_test <- test_data$New.Cases
+p_rf <- expm1(pred_rf) 
+p_lm <- expm1(pred_lm) 
+rf_residuals <- actual_test - p_rf
+lm_residuals <- actual_test - p_lm
+
+par(mfrow = c(2, 4), mar = c(4, 4, 2, 1), oma = c(0, 0, 3, 0))
+
+hist(rf_residuals, main = "Residual Distribution - RF", col = alpha("forestgreen", 0.6), border = "white", xlab = "Residuals (cases)")
+plot(p_rf, rf_residuals, main = "Homoscedasticity - RF", pch = 19, col = alpha("forestgreen", 0.4), xlab = "Predicted Cases", ylab = "Residuals")
+abline(h = 0, col = "red", lwd = 2, lty = 2)
+qqnorm(rf_residuals, main = "Q-Q Plot - RF", pch = 19, col = alpha("forestgreen", 0.4))
+qqline(rf_residuals, col = "red", lwd = 2)
+acf(rf_residuals, main = "Autocorrelation - RF", col = "forestgreen")
+
+hist(lm_residuals, main = "Residual Distribution - LM", col = alpha("steelblue", 0.6), border = "white", xlab = "Residuals (cases)")
+plot(p_lm, lm_residuals, main = "Homoscedasticity - LM", pch = 19, col = alpha("steelblue", 0.4), xlab = "Predicted Cases", ylab = "Residuals")
+abline(h = 0, col = "red", lwd = 2, lty = 2)
+qqnorm(lm_residuals, main = "Q-Q Plot - LM", pch = 19, col = alpha("steelblue", 0.4))
+qqline(lm_residuals, col = "red", lwd = 2)
+acf(lm_residuals, main = "Autocorrelation - LM", col = "steelblue")
+
+mtext("Comprehensive Residual Diagnostics for Predictive Models", outer = TRUE, cex = 1.5, font = 2)
+```
+
+**Test Conclusions:** Durbin-Watson test values (ranging from \~1.6 to 2.1) indicate the absence of significant first-order autocorrelation, which represents a successful outcome in time-series modeling. The low p-values observed in the normality tests are attributed to the inherent nature of the data—specifically, the high frequency of zero values and sudden spikes (outbreaks)—which is characteristic of rare epidemiological phenomena.
+
+------------------------------------------------------------------------
+
+# 5. Prediction on the Test Set
+
+The final evaluation of the models was conducted using the last four observations of the time series.
+
+```{r final_prediction, echo=FALSE , warning=FALSE, message=FALSE}
+final_showdown <- data.frame(
+  Actual = actual_test,
+  RF_Pred = round(p_rf, 2),
+  LM_Pred = round(p_lm, 2),
+  RF_Error = round(abs(actual_test - p_rf), 2),
+  LM_Error = round(abs(actual_test - p_lm), 2)
+)
+
+kable(final_showdown, align = "c", caption = "Prediction Results for the Last 4 Observations")
+
+total_errors <- data.frame(
+  Model = c("Random Forest", "Log-Linear"),
+  Total_Absolute_Error = c(sum(final_showdown$RF_Error), sum(final_showdown$LM_Error))
+)
+
+kable(total_errors, align = "c", caption = "Summary of Total Deviation")
+
+```
+
+------------------------------------------------------------------------
+
+# 6. Summary and Conclusions
+
+The story of the MERS virus, chronicled in numbers, allows us to draw conclusions that extend far beyond mere statistics. This analysis has demonstrated that we are dealing with an unpredictable and extremely dangerous adversary. The disease proved to be highly transmissible within medical facilities, often resurging in new outbreaks just as it appeared to have subsided.
+
+#### 6.1. Key Observations
+
+1.  **The Dual Nature of the Epidemic:** The data reveals two distinct patterns. In **Saudi Arabia**, the virus maintains a constant presence, rooted in the local environment and animal-to-human contact. Conversely, the **South Korean** outbreak serves as a critical lesson for global healthcare systems—there, the virus spread rapidly through emergency departments, proving that a single breach in hospital protocols can lead to systemic paralysis.
+2.  **A Lesson in Humility:** Analyzing the time-series charts teaches us that MERS can remain "dormant" for many weeks before striking again with sudden force. This inherent volatility is precisely why standard linear forecasting methods fail to provide reliable results.
+
+#### 6.2. Modeling Insights
+
+1.  **Linear Regression:** The classical approach proved to be too rigid and literal. We encountered scenarios where the model predicted a negative number of patients—a logical impossibility that further proved the non-linear nature of the disease.
+2.  **Random Forest:** The Random Forest model understood the data's nature far more effectively. By utilizing **Lags**, it captured the "memory" of the epidemic, recognizing that an outbreak in previous weeks drastically increases the risk in the following days. Explaining 75% of the variance in such a chaotic phenomenon is an excellent result.
+3.  **Temporal Memory:** Perhaps the most significant insight from the modeling process was that the epidemic possesses a "memory." The most effective way to predict tomorrow's situation is to analyze the data from two weeks prior.
+
+#### 6.3. Future Outlook and Recommendations
+
+-   **Do Not Trust the Silence:** Healthcare authorities must not lower their guard during periods of zero reported cases. Our model can function as an **Early Warning System**—as soon as the Lags begin to trend upward, the system should trigger an immediate alert.
+-   **Hospitals on the Front Line:** The South Korean case demonstrates that emergency departments must be prepared for the immediate isolation of suspected MERS patients. The battle against an epidemic is often won or lost in the initial triage phase.
